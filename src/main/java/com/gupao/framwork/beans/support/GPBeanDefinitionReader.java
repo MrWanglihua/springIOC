@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+/**
+ * 读取配置文件，将其存入IOC容器中
+ */
 public class GPBeanDefinitionReader {
 
     private List<String> registyBeanClass = new ArrayList<String>();
@@ -45,6 +48,10 @@ public class GPBeanDefinitionReader {
 
     }
 
+    /**
+     * 扫描配置文件中的信息，将他们注入到IOC容器中
+     * @return
+     */
     public List<GPBeanDefinition> loadBeanDefinitions() {
 
         List<GPBeanDefinition> result = new ArrayList<GPBeanDefinition>();
