@@ -28,6 +28,11 @@ public class GPBeanDefinitionReader {
      * @param locations
      */
     public GPBeanDefinitionReader(String... locations) {
+
+        for(String   s:locations){
+            System.out.println("====》"+s);
+        }
+
         InputStream is = this.getClass().getClassLoader().getResourceAsStream(locations[0].replaceAll("classpath:", ""));
 
         try {
@@ -113,9 +118,10 @@ public class GPBeanDefinitionReader {
         //scanPackage = com.gupaoedu.demo ，存储的是包路径
         //转换为文件路径，实际上就是把.替换为/就OK了
         //classpath
-        URL url = this.getClass().getClassLoader().getResource("/" + scanPackage.replaceAll("\\.", "/"));
+        URL url = this.getClass().getResource("/" + scanPackage.replaceAll("\\.", "/"));
 
         File classPath = new File(url.getFile());
+
 
         for (File file : classPath.listFiles()) {
             if (file.isDirectory()) {

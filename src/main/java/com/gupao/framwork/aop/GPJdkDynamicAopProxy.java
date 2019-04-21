@@ -23,6 +23,7 @@ public class GPJdkDynamicAopProxy implements GPAopProxy, InvocationHandler {
 
     @Override
     public Object getProxy(ClassLoader classLoader) {
+        //        this.advised.getTargetClass().getInterfaces()：获得切面类的初始化
         return Proxy.newProxyInstance(classLoader,this.advise.getTargetClass().getInterfaces(),this);
     }
 

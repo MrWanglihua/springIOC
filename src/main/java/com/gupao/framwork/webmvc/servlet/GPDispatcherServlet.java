@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 @Slf4j
 public class GPDispatcherServlet extends HttpServlet {
 
-    private final String CONTEXT_CONFIG_LOCATION ="";
+    private final String CONTEXT_CONFIG_LOCATION ="contextConfigLocation";
 
     private GPApplicationContext context;
 

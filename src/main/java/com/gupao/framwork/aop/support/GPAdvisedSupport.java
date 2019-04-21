@@ -19,6 +19,10 @@ public class GPAdvisedSupport {
 
     private Class<?> targetClass;
 
+    public void setTargetClass(Class<?> targetClass) {
+        this.targetClass = targetClass;
+    }
+
     private Object target;
 
     private GPAopConfig config;
@@ -39,6 +43,9 @@ public class GPAdvisedSupport {
     /**
      * action：通过配置文件的方式，给各属性赋值
      * aims：为筛选是否为切面类，做准备
+     * 1、给正则表达式赋值
+     * 2、创建方法与责任链对应关系
+     *
      */
     private void parse() {
         //pointCut 表达式
@@ -51,7 +58,7 @@ public class GPAdvisedSupport {
         //pointCut=public .* com.gupaoedu.vip.spring.demo.service..*Service..*(.*)
         //玩正则
         String pointCutForClassRegex = pointCut.substring(0, pointCut.lastIndexOf("\\(") - 4);
-        pointCutClassPattern = Pattern.compile("class " + pointCutForClassRegex.substring(pointCutForClassRegex.lastIndexOf("") + 1));
+        pointCutClassPattern = Pattern.compile("class " + pointCutForClassRegex.substring(pointCutForClassRegex.lastIndexOf(" ") + 1));
         try {
             methodCache = new HashMap<Method, List<Object>>();
             Pattern pattern = Pattern.compile(pointCut);
@@ -82,6 +89,11 @@ public class GPAdvisedSupport {
                     if (!(null == config.getAspectAfter() || "".equals(config.getAspectAfter()))) {
                         //创建一个Advivce
                         advices.add(new GPAfterReturningAdviceInterceptor(aspectMethods.get(config.getAspectAfter()), aspectClass.newInstance()));
+                    }
+                    //doAround
+                    if (!(null == config.getDoAround() || "".equals(config.getDoAround()))) {
+                        //创建一个Advivce
+                        advices.add(new GPAfterReturningAdviceInterceptor(aspectMethods.get(config.getDoAround()), aspectClass.newInstance()));
                     }
                     //afterThrowing
                     if (!(null == config.getAspectAfterThrow() || "".equals(config.getAspectAfterThrow()))) {

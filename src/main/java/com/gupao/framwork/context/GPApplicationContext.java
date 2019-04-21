@@ -3,6 +3,11 @@ package com.gupao.framwork.context;
 import com.gupao.framwork.annotation.GPAutowired;
 import com.gupao.framwork.annotation.GPController;
 import com.gupao.framwork.annotation.GPService;
+import com.gupao.framwork.aop.GPAopProxy;
+import com.gupao.framwork.aop.GPCglibAopProxy;
+import com.gupao.framwork.aop.GPJdkDynamicAopProxy;
+import com.gupao.framwork.aop.config.GPAopConfig;
+import com.gupao.framwork.aop.support.GPAdvisedSupport;
 import com.gupao.framwork.beans.GPBeanWrapper;
 import com.gupao.framwork.beans.config.GPBeanDefinition;
 import com.gupao.framwork.beans.config.GPBeanPostProcessor;
@@ -33,6 +38,13 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
 
     private String[] configLoactions;
     private GPBeanDefinitionReader reader;
+
+
+    //用来保存注册式单例的容器
+    private Map<String, Object> factoryBeanObjectCache = new HashMap<String, Object>();
+    //用来存储所有被代理过的对象
+    private Map<String, GPBeanWrapper> factoryBeanInstanceCache = new ConcurrentHashMap<String, GPBeanWrapper>();
+
 
     /**
      * 通过构造方法传入一个配置文件路径
@@ -72,12 +84,15 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
      */
     private void doAotowrited() {
 
-        for (Map.Entry<String, GPBeanDefinition> entry : beanDefinitionMap.entrySet()) {
-
+        for (Map.Entry<String, GPBeanDefinition> entry : super.beanDefinitionMap.entrySet()) {
             String beanName = entry.getKey();
 
             if (!entry.getValue().isLazyInit()) {
-                this.getBean(beanName);
+                try {
+                    this.getBean(beanName);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
         }
@@ -96,10 +111,7 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
 
     }
 
-    //用来保存注册式单例的容器
-    private Map<String, Object> singletonBeanCacheMap = new HashMap<String, Object>();
-    //用来存储所有被代理过的对象
-    private Map<String, GPBeanWrapper> beanWrapperMap = new ConcurrentHashMap<String, GPBeanWrapper>();
+
 
 
     /**
@@ -114,11 +126,10 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
      * @return
      */
     @Override
-    public Object getBean(String beanName) {
+    public Object getBean(String beanName) throws Exception {
 
         GPBeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
 
-        try {
 //            初始化一个通知
             GPBeanPostProcessor beanPostProcessor = new GPBeanPostProcessor();
 //            通过beanDefinition创建bean实例
@@ -130,29 +141,29 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
 //          在实例初始化之前调用一次
             beanPostProcessor.postProcessBeforeInitialization(instance, beanName);
 
-            GPBeanWrapper wrapper = new GPBeanWrapper(instance);
-            this.beanWrapperMap.put(beanName, wrapper);
+            GPBeanWrapper beanWrapper = new GPBeanWrapper(instance);
+            this.factoryBeanInstanceCache.put(beanName, beanWrapper);
 //          在实例初始化之后调用一次
             beanPostProcessor.postProcessBeforeInitialization(instance, beanName);
 //          将扫描到的类注入到初始化属性中
-            populateBean(beanName, instance);
+            populateBean(beanName,new GPBeanDefinition(),beanWrapper);
 
-            return this.beanWrapperMap.get(beanName).getWrappedInstance();
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
+            return this.factoryBeanInstanceCache.get(beanName).getWrappedInstance();
+
     }
 
     /**
-     * 注入到属性里
-     *
+     * 将对象注入到属性中
      * @param beanName
-     * @param instance
+     * @param gpBeanDefinition
+     * @param gpBeanWrapper
+     * 问题：传入参数是少了一个gpBeanWrapper,所以注入的时候为空
      */
-    private void populateBean(String beanName, Object instance) {
-        Class<?> clazz = instance.getClass();
+    private void populateBean(String beanName, GPBeanDefinition gpBeanDefinition, GPBeanWrapper gpBeanWrapper) {
+        Object instance = gpBeanWrapper.getWrappedInstance();
+
+        Class<?> clazz = gpBeanWrapper.getWrappedClass();
         //不是所有牛奶都叫特仑苏
         if (!(clazz.isAnnotationPresent(GPController.class) || clazz.isAnnotationPresent(GPService.class))) {
             return;
@@ -174,7 +185,7 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
             field.setAccessible(true);
 
             try {
-                field.set(instance, this.beanWrapperMap.get(autowiredBeanName).getWrappedInstance());
+                field.set(instance, this.factoryBeanInstanceCache.get(autowiredBeanName).getWrappedInstance());
             } catch (IllegalAccessException e) {
                 e.printStackTrace();
             }
@@ -195,13 +206,26 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
         Object instance = null;
         String className = beanDefinition.getBeanClassName();
         try {
-            if (this.singletonBeanCacheMap.containsKey(className)) {
+            if (this.factoryBeanObjectCache.containsKey(className)) {
 
                 instance = Class.forName(className);
             } else {
                 Class<?> clazz = Class.forName(className);
                 instance = clazz.newInstance();
-                this.singletonBeanCacheMap.put(beanDefinition.getFactoryBeanName(), instance);
+
+                GPAdvisedSupport config = instantionAopConfig();
+                config.setTargetClass(clazz);
+                config.setTarget(instance);
+
+                //符合PointCut的规则的话，创建代理对象
+                if(config.pointCutMatch()) {
+                    instance = createProxy(config).getProxy();
+                }
+
+//              错误：this.singletonBeanCacheMap.put(className,instance);没有，导致instance初始化为null
+                this.factoryBeanObjectCache.put(className,instance);
+                this.factoryBeanObjectCache.put(beanDefinition.getFactoryBeanName(), instance);
+
             }
             return instance;
         } catch (ClassNotFoundException e) {
@@ -216,8 +240,36 @@ public class GPApplicationContext extends GPDefaultListableBeanFactory implement
         return null;
     }
 
+    /**
+     * 通过策略方法：创建代理对象
+     * @param config
+     * @return
+     */
+    private GPAopProxy createProxy(GPAdvisedSupport config) {
+
+        Class<?> targetClass = config.getTargetClass();
+        if(targetClass.getInterfaces().length>0){
+            return new GPJdkDynamicAopProxy(config);
+        }
+
+        return new GPCglibAopProxy(config);
+    }
+
+    private GPAdvisedSupport instantionAopConfig() {
+        GPAopConfig config = new GPAopConfig();
+        config.setPointCut(this.reader.getConfig().getProperty("pointCut"));
+        config.setAspectClass(this.reader.getConfig().getProperty("aspectClass"));
+        config.setAspectBefore(this.reader.getConfig().getProperty("aspectBefore"));
+        config.setAspectAfter(this.reader.getConfig().getProperty("aspectAfter"));
+        config.setAspectAfterThrow(this.reader.getConfig().getProperty("aspectAfterThrow"));
+        config.setDoAround(this.reader.getConfig().getProperty("doAround"));
+        config.setAspectAfterThrowingName(this.reader.getConfig().getProperty("aspectAfterThrowingName"));
+        return new GPAdvisedSupport(config);
+    }
+
     public String[] getBeanDefinitionNames() {
-        return this.beanDefinitionMap.entrySet().toArray(new String[beanDefinitionMap.size()]);
+//        出错，原内容为return this.beanDefinitionMap.entrySet().toArray(new String[beanDefinitionMap.size()]);
+        return this.beanDefinitionMap.keySet().toArray(new String[beanDefinitionMap.size()]);
     }
 
     public int getBeanDefinitionCount() {
