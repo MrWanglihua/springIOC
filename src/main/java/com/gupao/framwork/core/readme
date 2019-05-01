@@ -1,0 +1,52 @@
+> 1、依赖注入发生的时间
+
+当 Spring IOC 容器完成了 Bean 定义资源的定位、载入和解析注册以后，IOC 容器中已经管理类 Bean
+定义的相关数据，但是此时 IOC 容器还没有对所管理的 Bean 进行依赖注入，依赖注入在以下两种情况
+发生：
+1)、用户第一次调用 getBean()方法时，IOC 容器触发依赖注入。
+    在 BeanFactory 中我们可以看到 getBean(String...)方法，但它具体实现在 AbstractBeanFactory 中。
+2)、当用户在配置文件中将< bean>元素配置了 lazy-init=false 属性，即让容器在解析注册 Bean 定义
+时进行预实例化，触发依赖注入。
+
+> 2、Bean的创建
+
+①、通过对 IOC 容器获取 Bean 方法的分析，我们可以看到在 Spring 中，如果 Bean 定义的单例模式(Singleton)，则容器在创建之前先从缓存中查找，以确保整个容器中只存在一个实例对象。如果 Bean定义的是原型模式(Prototype)，则容器每次都会创建一个新的实例对象。除此之外，Bean 定义还可以扩展为指定其生命周期范围。
+②、源码只是定义了根据 Bean 定义的模式，采取的不同创建 Bean 实例对象的策略，具体的 Bean实例 对象的创 建过程 由实现了 ObjectFactory 接口 的匿名内 部类的 createBean()方法 完成，ObjectFactory 使 用 委 派 模 式 ， 具 体 的 Bean 实 例 创 建 过 程 交 由 其 实 现 类AbstractAutowireCapableBeanFactory 完成，我们继续分析 AbstractAutowireCapableBeanFactory的 createBean()方法的源码，理解其创建 Bean 实例的具体实现过程。
+
+> 3、依赖注入
+
+1)、createBeanInstance()方法，生成 Bean 所包含的 java 对象实例。
+2)、populateBean()方法，对 Bean 属性的依赖注入进行处理。
+
+>4、 选择 Bean 实例化策略（AbstractAutowireCapableBeanFactory）
+
+①、对使用工厂方法和自动装配特性的 Bean 的实例化相当比较清楚，调用相应的工厂方法或者参数匹配的构造方法即可完成实例化对象的工作，
+②、对于我们最常使用的默认无参构造方法就需要使用相应的初始化策略(JDK 的反射机制或者 CGLib)来进行初始化了，在方法 getInstantiationStrategy().instantiate()中就具体实现类使用初始策略实例化对象。
+
+> 5、执行 Bean 实例化（SimpleInstantiationStrategy）
+
+如果 Bean 有方法被覆盖了，则使用 JDK 的反射机制进行实例化，否
+则，使用 CGLib 进行实例化。
+注：①、CGLib 是一个常用的字节码生成器的类库，它提供了一系列 API 实现 Java 字节码的生成和转换功能。
+②、我们在学习 JDK 的动态代理时都知道，JDK 的动态代理只能针对接口，如果一个类没有实现任何接口，要对其进行动态代理只能使用 CGLib。
+
+> 6、准备依赖注入（AbstractAutowireCapableBeanFactory）
+
+AbstractAutowireCapableBeanFactory 的 populateBean()方法，对属性依赖注入
+对属性的注入过程分以下两种情况：
+1)、属性值类型不需要强制转换时，不需要解析属性值，直接准备进行依赖注入。
+2)、属性值需要进行类型强制转换时，如对其他对象的引用等，首先需要解析属性值，然后对解析后的属性值进行依赖注入。
+
+> 7、解析属性注入规则（BeanDefinitionValueResolver）
+
+resolveValueIfNecessary()中实现的
+Spring 是如何将引用类型，内部类以及集合类型等属性进行解析的，
+属性值解析完成后就可以进行依赖注入了，依赖注入的过程就是 Bean 对象实例设置到它所依赖的 Bean对象属性上去。而真正的依赖注入是通过 bw.setPropertyValues()方法实现的，该方法也使用了委托模式 ， 在 BeanWrapper 接 口 中 至 少 定 义 了 方 法 声 明 ， 依 赖 注 入 的 具 体 实 现 交 由 其 实 现 类BeanWrapperImpl 来完成，
+
+> 8、注入赋值（AbstractNestablePropertyAccessor）
+
+1)、对于集合类型的属性，将其属性值解析为目标类型的集合后直接赋值给属性。
+2)、对于非集合类型的属性，大量使用了 JDK 的反射机制，通过属性的 getter()方法获取指定属性注入
+以前的值，同时调用属性的 setter()方法为属性设置注入后的值。看到这里相信很多人都明白了 Spring
+的 setter()注入原理。
+至此 Spring IOC 容器对 Bean 定义资源文件的定位，载入、解析和依赖注入已经全部分析完毕，现在Spring IOC 容器中管理了一系列靠依赖关系联系起来的 Bean，程序不需要应用自己手动创建所需的对象，Spring IOC 容器会在我们使用的时候自动为我们创建，并且为我们注入好相关的依赖，这就是Spring 核心功能的控制反转和依赖注入的相关功能
